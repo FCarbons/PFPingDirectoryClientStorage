@@ -1,6 +1,7 @@
 package com.pi.pf.pingdirectorydatastorage;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -66,6 +67,7 @@ public class PingDirectoryClientStorage implements ClientStorageManager {
 	private final String FIELDNAME_CLIENT_ATTRIBUTES = "clientAttributes";
 
 	public PingDirectoryClientStorage() {
+		log.debug("Creating PingDirectoryClientStorage");
 		configStore = ConfigStoreFarm.getConfig(this.getClass());
 		jndiName = configStore.getStringValue("PingFederateDSJNDIName", null);
 		searchBase = configStore.getStringValue("SearchBase", "");
@@ -74,6 +76,10 @@ public class PingDirectoryClientStorage implements ClientStorageManager {
 		if (ldapSource == null) {
 			ldapSource = MgmtFactory.getDataSourceManager().getLdapDataSource(jndiName);
 		}
+
+		log.debug("JndiName " + jndiName);
+		log.debug("searchBase " + searchBase);
+		log.debug("clientObjectClassName " + clientObjectClassName);
 	}
 
 	/**
@@ -91,8 +97,11 @@ public class PingDirectoryClientStorage implements ClientStorageManager {
 	public ClientData getClient(String clientId) throws ClientStorageManagementException {
 		log.debug("Starting getClient: " + clientId);
 		try {
-			AttributeMap clientAttributes = LDAPUtil.getInstance(ldapSource).getAttributesOfMatchingObject(
-					FIELDNAME_CLIENT_ID + "=" + clientId + "," + searchBase);
+			String clientDN = FIELDNAME_CLIENT_ID + "=" + clientId + "," + searchBase;
+			log.debug("Loading clinet for DN: " + clientDN);
+			AttributeMap clientAttributes = LDAPUtil.getInstance(ldapSource).getAttributesOfMatchingObject(clientDN);
+
+			log.debug("Client attributes: " + clientAttributes);
 			return getClientData(clientAttributes);
 		} catch (Exception e) {
 			log.error(e);
@@ -100,7 +109,6 @@ public class PingDirectoryClientStorage implements ClientStorageManager {
 		}
 	}
 
-	
 	/**
 	 * Retrieves all client records.
 	 *
@@ -112,7 +120,7 @@ public class PingDirectoryClientStorage implements ClientStorageManager {
 	@Override
 	public Collection<ClientData> getClients() throws ClientStorageManagementException {
 		log.debug("Starting getClients");
-		List<ClientData> results = Collections.emptyList();
+		List<ClientData> results = new ArrayList<ClientData> ();
 
 		try {
 			String searchCriteria = "(objectClass=" + clientObjectClassName + ")";
@@ -219,14 +227,16 @@ public class PingDirectoryClientStorage implements ClientStorageManager {
 		String encodedClientDataString = formatId + "." + encodedClientDocument;
 		return encodedClientDataString;
 	}
-	
+
 	private ClientData getClientData(AttributeMap attributeMap) {
+
+		if (attributeMap == null) {
+			return null;
+
+		}
 		ClientData currentClientData = new ClientData();
 		currentClientData.setId(attributeMap.getSingleValue(FIELDNAME_CLIENT_ID));
 		currentClientData.setData(attributeMap.getSingleValue(FIELDNAME_CLIENT_ATTRIBUTES));
 		return currentClientData;
 	}
-
-	
-
 }
