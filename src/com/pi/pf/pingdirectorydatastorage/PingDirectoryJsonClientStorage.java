@@ -1,5 +1,6 @@
 package com.pi.pf.pingdirectorydatastorage;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -20,6 +21,8 @@ import org.sourceid.saml20.domain.LdapDataSource;
 import org.sourceid.saml20.domain.mgmt.MgmtFactory;
 import org.sourceid.util.log.AttributeMap;
 
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.pingidentity.common.util.Base64URL;
 import com.pingidentity.common.util.ldap.LDAPUtil;
 import com.pingidentity.common.util.ldap.LDAPUtilOptions;
@@ -53,9 +56,9 @@ import com.pingidentity.sdk.oauth20.ClientStorageManager;
  * for building and deploying.
  */
 
-public class PingDirectoryClientStorage implements ClientStorageManager {
+public class PingDirectoryJsonClientStorage implements ClientStorageManager {
 
-	private final Log log = LogFactory.getLog(PingDirectoryClientStorage.class);
+	private final Log log = LogFactory.getLog(PingDirectoryJsonClientStorage.class);
 
 	protected ConfigStore configStore;
 	protected String jndiName;
@@ -66,7 +69,7 @@ public class PingDirectoryClientStorage implements ClientStorageManager {
 	private final String FIELDNAME_CLIENT_ID = "clientId";
 	private final String FIELDNAME_CLIENT_ATTRIBUTES = "clientAttributes";
 
-	public PingDirectoryClientStorage() {
+	public PingDirectoryJsonClientStorage () {
 		log.debug("Creating PingDirectoryClientStorage");
 		configStore = ConfigStoreFarm.getConfig(this.getClass());
 		jndiName = configStore.getStringValue("PingFederateDSJNDIName", null);
@@ -148,7 +151,7 @@ public class PingDirectoryClientStorage implements ClientStorageManager {
 	 */
 	@Override
 	public void addClient(ClientData client) throws ClientStorageManagementException {
-		log.debug("Starting addClient: " + client.getId() + " data " + decodeClientData(client.getData()));
+		log.debug("Starting addClient: " + client.getId());
 		try {
 			LdapName ldapName = new LdapName(FIELDNAME_CLIENT_ID + "=" + client.getId() + "," + searchBase);
 
@@ -157,7 +160,7 @@ public class PingDirectoryClientStorage implements ClientStorageManager {
 			attrsToLdap.put("objectclass", clientObjectClassName);
 
 			attrsToLdap.put(FIELDNAME_CLIENT_ID, client.getId());
-			attrsToLdap.put(FIELDNAME_CLIENT_ATTRIBUTES, client.getData());
+			attrsToLdap.put(FIELDNAME_CLIENT_ATTRIBUTES, new ClientStorageJsonTranslator().clientDataToJson(client.getData()));
 
 			LDAPUtil.getInstance(ldapSource).addAccessGrant(ldapName, attrsToLdap);
 		} catch (Exception e) {
@@ -198,11 +201,11 @@ public class PingDirectoryClientStorage implements ClientStorageManager {
 	 */
 	@Override
 	public void updateClient(ClientData client) throws ClientStorageManagementException {
-		log.debug("Starting updateClient: " + client.getId() + " data " + decodeClientData(client.getData()));
+		log.debug("Starting updateClient: " + client.getId() + " data " + client.getData());
 		try {
 			LdapName ldapName = new LdapName(FIELDNAME_CLIENT_ID + "=" + client.getId() + "," + searchBase);
 			Attributes attributes = new BasicAttributes();
-			attributes.put(FIELDNAME_CLIENT_ATTRIBUTES, client.getData());
+			attributes.put(FIELDNAME_CLIENT_ATTRIBUTES, new ClientStorageJsonTranslator().clientDataToJson(client.getData()));
 			LDAPUtil.getInstance(ldapSource).modifyItem(ldapName, attributes, DirContext.REPLACE_ATTRIBUTE);
 		} catch (Exception e) {
 			log.error(e);
@@ -210,38 +213,11 @@ public class PingDirectoryClientStorage implements ClientStorageManager {
 		}
 	}
 
-	private String decodeClientData(String clientData) {
-		// parse ClientData data (data =
-		// “1.asdfasdfawer234234234234234234sdfssgzdfgasg")
-		String[] dataParts = clientData.split("\\.");
-		String encodedXmlClientDocumentString = dataParts[1];
-
-		// decode the xml client
-		String xmlString = Base64URL.decodeToString(encodedXmlClientDocumentString, StandardCharsets.UTF_8.name());
-		return xmlString;
-	}
-
-	private String encodeClientData(String clientData) {
-		String formatId = "1";
-		String encodedClientDocument = Base64URL.encodeToString(clientData.getBytes(StandardCharsets.UTF_8));
-		String encodedClientDataString = formatId + "." + encodedClientDocument;
-		return encodedClientDataString;
-	}
-
-	private ClientData getClientData(AttributeMap attributeMap) {
-
+	private ClientData getClientData(AttributeMap attributeMap) throws JsonParseException, JsonMappingException, IOException {
 		if (attributeMap == null) {
 			return null;
 
 		}
-		ClientData currentClientData = new ClientData();
-		currentClientData.setId(attributeMap.getSingleValue(FIELDNAME_CLIENT_ID));
-		currentClientData.setData(attributeMap.getSingleValue(FIELDNAME_CLIENT_ATTRIBUTES));
-		
-		
-		
-		
-		
-		return currentClientData;
+		return new ClientStorageJsonTranslator().jsonToClientData(attributeMap.getSingleValue(FIELDNAME_CLIENT_ATTRIBUTES));
 	}
 }
